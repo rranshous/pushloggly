@@ -137,7 +137,30 @@ class ContainerInfo
   end
 end
 
+class ThreadedContainerWatcher < Thread
+  def initialize
+    self.class.watch_existing
+    super do
+      ::Docker::Event.stream do |event|
+        puts "EVENT: #{event}"
+        if event.status == 'create'
+          self.class.watch_container event.id
+        end
+      end
+    end
+  end
+
+  def self.watch_existing
+    Docker::Container.all.each do |container|
+      watch_container container.id
+    end
+  end
+
+  def self.watch_container container_id
+    log_printer = LogPrinter.new container_id
+    ThreadedLogHandler.new(container_id, log_printer)
+  end
+end
+
 Thread.abort_on_exception = true
-container_id = ARGV.shift
-log_printer = LogPrinter.new container_id
-ThreadedLogHandler.new(container_id, log_printer).join
+ThreadedContainerWatcher.new.join
