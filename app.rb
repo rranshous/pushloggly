@@ -106,23 +106,38 @@ class HTTPSocketLogReader
   end
 end
 
-class ThreadedLogPrinter < Thread
-  def initialize *args
-    super do |container_id|
-      logs = HTTPSocketLogReader.new container_id
-      logs.enumerate.each do |type, timestamp, message|
-        puts "#{type}@#{timestamp}| #{message}"
-      end
-    end
+class LogPrinter
+  def initialize container_id
+    @container_name = ContainerInfo.name(container_id)
   end
-  def self.start *args
-    self.new(*args)
-  end
-  def self.fork *args
-    self.new(*args)
+  def call type, timestamp, message
+    puts "#{@container_name}[#{type}] @ #{timestamp} | #{message}"
   end
 end
 
 require 'thread'
+class ThreadedLogHandler < Thread
+  def initialize *args
+    super do |container_id, *handlers|
+      logs = HTTPSocketLogReader.new container_id
+      logs.enumerate.each do |type, timestamp, message|
+        handlers.each { |h| h.call type, timestamp, message }
+      end
+    end
+  end
+end
+
+require 'docker'
+class ContainerInfo
+  def self.image_name container_id
+    ::Docker::Container.get(container_id).json['Config']['Image']
+  end
+  def self.name container_id
+    ::Docker::Container.get(container_id).json['Name']
+  end
+end
+
 Thread.abort_on_exception = true
-ThreadedLogPrinter.new(ARGV.shift).join
+container_id = ARGV.shift
+log_printer = LogPrinter.new container_id
+ThreadedLogHandler.new(container_id, log_printer).join
