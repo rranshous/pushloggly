@@ -6,8 +6,12 @@ GEM
       excon (>= 0.38.0)
       json
     excon (0.44.4)
+    httparty (0.13.3)
+      json (~> 1.8)
+      multi_xml (>= 0.5.2)
     json (1.8.2)
     method_source (0.8.2)
+    multi_xml (0.5.5)
     pry (0.10.1)
       coderay (~> 1.1.0)
       method_source (~> 0.8.1)
@@ -20,4 +24,5 @@ PLATFORMS
 DEPENDENCIES
   docker-api
   excon
+  httparty
   pry

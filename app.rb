@@ -45,6 +45,7 @@ class HTTPSocketLogStream < UNIXSocket
   end
 end
 
+require 'excon'
 class DockerHTTPLogDecoder
   def initialize data_stream
     @data_stream = data_stream
@@ -115,6 +116,39 @@ class LogPrinter
   end
 end
 
+require 'httparty'
+require 'json'
+class LogglyPusher
+  def initialize container_id
+    @container_name = ContainerInfo.name(container_id)
+    @container_id = container_id
+  end
+
+  def call type, timestamp, message
+    to_send = format_message(type, timestamp, message)
+    r = HTTParty.post("http://logs-01.loggly.com/inputs/#{token}/tag/http/",
+                      body: to_send, headers: { 'Content-Type' => 'text/plain' })
+    raise "BAD RESPONSE: #{r.code}:: #{r.body}" if r.code != 200
+  end
+
+  private
+
+  def format_message type, timestamp, message
+    "#{timestamp} #{message} "+
+    {
+      timestamp: timestamp,
+      source: type,
+      container_name: @container_name,
+      container_id: @container_id,
+      message: message,
+    }.to_json
+  end
+
+  def token
+    "513ba235-db85-43aa-8ce6-cd5104e50a46"
+  end
+end
+
 require 'thread'
 class ThreadedLogHandler < Thread
   def initialize *args
@@ -142,7 +176,6 @@ class ThreadedContainerWatcher < Thread
     self.class.watch_existing
     super do
       ::Docker::Event.stream do |event|
-        puts "EVENT: #{event}"
         if event.status == 'create'
           self.class.watch_container event.id
         end
@@ -158,7 +191,8 @@ class ThreadedContainerWatcher < Thread
 
   def self.watch_container container_id
     log_printer = LogPrinter.new container_id
-    ThreadedLogHandler.new(container_id, log_printer)
+    loggly_pusher = LogglyPusher.new container_id
+    ThreadedLogHandler.new(container_id, log_printer, loggly_pusher)
   end
 end
 
