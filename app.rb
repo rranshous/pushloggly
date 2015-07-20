@@ -113,7 +113,7 @@ class LogPrinter
     @container_name = ContainerInfo.name(container_id)
   end
   def call type, timestamp, message
-    puts "#{@container_name}[#{type}] @ #{timestamp} | #{message}"
+    STDOUT.puts "#{@container_name} [#{type}] @ #{timestamp} | #{message}\n"
   end
 end
 
@@ -206,7 +206,7 @@ class ThreadedContainerWatcher < Thread
   end
 end
 
-LogglyPusher.set_token ARGV.shift
+LogglyPusher.set_token ARGV.shift || ENV['LOGGLY_TOKEN']
 handlers = [ LogPrinter, LogglyPusher ]
 Thread.abort_on_exception = true
 ThreadedContainerWatcher.new(handlers).join
