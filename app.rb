@@ -1,6 +1,7 @@
 # listen to the stdout / stderr stream of all containers
 # including containers which are started after this script
 # pushlish interlaced log to the screen
+# pushblish to loggly
 # log messages should include container names, std or stderr, timestamp + message
 
 class HTTPSocketLogStream < UNIXSocket
@@ -84,7 +85,7 @@ class DockerHTTPLogDecoder
                           :STDERR
                         end
           timestamp, message = http_chunk_body.split(' ', 2)
-          yielder << [stream_type, timestamp, message]
+          yielder << [stream_type, timestamp, message.strip]
         end
         if http_chunk_size == 8
           docker_stream_type, docker_chunk_size = http_chunk_body.unpack("CxxxN")
@@ -117,8 +118,13 @@ class LogPrinter
 end
 
 require 'httparty'
+require 'persistent_httparty'
 require 'json'
 class LogglyPusher
+  include HTTParty
+  persistent_connection_adapter({ :pool_size => 10,
+                                  :idle_timeout => 10,
+                                  :keep_alive => 30 })
   def initialize container_id
     @container_name = ContainerInfo.name(container_id)
     @container_id = container_id
@@ -126,8 +132,8 @@ class LogglyPusher
 
   def call type, timestamp, message
     to_send = format_message(type, timestamp, message)
-    r = HTTParty.post("http://logs-01.loggly.com/inputs/#{token}/tag/http/",
-                      body: to_send, headers: { 'Content-Type' => 'text/plain' })
+    r = self.class.post("http://logs-01.loggly.com/inputs/#{token}/tag/http/",
+                        body: to_send, headers: { 'Content-Type' => 'text/plain' })
     raise "BAD RESPONSE: #{r.code}:: #{r.body}" if r.code != 200
   end
 
