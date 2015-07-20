@@ -132,9 +132,13 @@ class LogglyPusher
 
   def call type, timestamp, message
     to_send = format_message(type, timestamp, message)
-    r = self.class.post("http://logs-01.loggly.com/inputs/#{token}/tag/http/",
+    r = self.class.post("http://logs-01.loggly.com/inputs/#{@@token}/tag/http/",
                         body: to_send, headers: { 'Content-Type' => 'text/plain' })
     raise "BAD RESPONSE: #{r.code}:: #{r.body}" if r.code != 200
+  end
+
+  def self.set_token token
+    @@token = token
   end
 
   private
@@ -148,10 +152,6 @@ class LogglyPusher
       container_id: @container_id,
       message: message,
     }.to_json
-  end
-
-  def token
-    "513ba235-db85-43aa-8ce6-cd5104e50a46"
   end
 end
 
@@ -178,13 +178,14 @@ class ContainerInfo
 end
 
 class ThreadedContainerWatcher < Thread
-  def initialize
-    self.class.watch_existing
-    super do
+  def initialize *args
+    super do |handlers|
+      @handlers = handlers
+      watch_existing
       begin
         ::Docker::Event.stream do |event|
           if event.status == 'create'
-            self.class.watch_container event.id
+            self.watch_container event.id
           end
         end
       rescue Excon::Errors::SocketError
@@ -193,18 +194,19 @@ class ThreadedContainerWatcher < Thread
     end
   end
 
-  def self.watch_existing
+  def watch_existing
     Docker::Container.all.each do |container|
       watch_container container.id
     end
   end
 
-  def self.watch_container container_id
-    log_printer = LogPrinter.new container_id
-    loggly_pusher = LogglyPusher.new container_id
-    ThreadedLogHandler.new(container_id, log_printer, loggly_pusher)
+  def watch_container container_id
+    handlers = @handlers.map { |h| h.new container_id }
+    ThreadedLogHandler.new(container_id, *handlers)
   end
 end
 
+LogglyPusher.set_token ARGV.shift
+handlers = [ LogPrinter, LogglyPusher ]
 Thread.abort_on_exception = true
-ThreadedContainerWatcher.new.join
+ThreadedContainerWatcher.new(handlers).join
