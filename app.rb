@@ -34,7 +34,7 @@ class HTTPSocketLogStream < UNIXSocket
   end
 
   def query_string
-    "stderr=1&stdout=1&timestamps=1&follow=1"
+    "stderr=1&stdout=1&timestamps=1&follow=1&tail=0"
   end
 
   def http_version
@@ -181,10 +181,14 @@ class ThreadedContainerWatcher < Thread
   def initialize
     self.class.watch_existing
     super do
-      ::Docker::Event.stream do |event|
-        if event.status == 'create'
-          self.class.watch_container event.id
+      begin
+        ::Docker::Event.stream do |event|
+          if event.status == 'create'
+            self.class.watch_container event.id
+          end
         end
+      rescue Excon::Errors::SocketError
+        retry
       end
     end
   end
