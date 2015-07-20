@@ -10,5 +10,8 @@ class ContainerInfo
     envs = ::Docker::Container.get(container_id).json['Config']['Env']
     Hash[envs.map{ |e| e.split('=') }]
   end
+  def self.app_name container_id
+    env(container_id)["APP_NAME"]
+  end
 end
 

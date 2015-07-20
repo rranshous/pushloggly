@@ -12,6 +12,7 @@ class LogglyPusher
     @container_image = ContainerInfo.image_name(container_id)
     @container_name = ContainerInfo.name(container_id)
     @container_env = ContainerInfo.env(container_id)
+    @container_app_name = ContainerInfo.app_name(container_id)
     @container_id = container_id
   end
 
@@ -20,7 +21,8 @@ class LogglyPusher
     context = message_context(type, timestamp, message)
     to_send = with_context to_send, context
     headers = { 'Content-Type' => 'text/plain' }
-    r = self.class.post("http://logs-01.loggly.com/inputs/#{@@token}/tag/http/",
+    tags_string = tags(type).join(',')
+    r = self.class.post("http://logs-01.loggly.com/inputs/#{@@token}/tag/#{tags_string}/",
                         body: to_send, headers: headers)
     raise "BAD RESPONSE: #{r.code}:: #{r.body}" if r.code != 200
   end
@@ -31,6 +33,15 @@ class LogglyPusher
 
   private
 
+  def tags type
+    tags = ['http',
+            "stream.#{type}"]
+    if @container_app_name
+      tags += ["app_name.#{@container_app_name}"]
+    end
+    tags
+  end
+
   def formatted_message type, timestamp, message
     message.strip
   end
@@ -38,7 +49,7 @@ class LogglyPusher
   def message_context type, timestamp, message
     {
       'timestamp' => timestamp,
-      'source' => type.to_s,
+      'stream' => type.to_s,
       'container_name' => @container_name,
       'container_id' => @container_id,
       'container_image' => @container_image,
